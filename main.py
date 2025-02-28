@@ -7,32 +7,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Retrieve credentials
-api_key = os.getenv('API_KEY')
-api_secret = os.getenv('API_SECRET')
 bearer_token = os.getenv('BEARER_TOKEN')
-mongo_client = os.getenv('MONGO_CLIENT')
+mongo_uri  = os.getenv('MONGO_CLIENT')
 
 # Verify if environment variables are loaded
-if not all([api_key, api_secret, bearer_token, mongo_client]):
+if not all([bearer_token, mongo_uri]):
     raise ValueError("One or more environment variables are missing!")
 
 # Connect to MongoDB Atlas
-client = MongoClient(mongo_client)
+client = MongoClient(mongo_uri)
 db = client["twitter_db"]
+collection = db["tweets"]
 
-class XListener(tweepy.StreamingClient):
-    def on_tweet(self, tweet):
-        tweet_data = {
-            "text": tweet.text,
-            "id": tweet.id,
-            "created_at": tweet.created_at if hasattr(tweet, "created_at") else None
-        }
-        db.raw_tweets.insert_one(tweet_data)
-        print(f"Tweet salvo: {tweet.text[:50]}...")
+client = tweepy.Client(bearer_token)
 
-stream = XListener(bearer_token)
+query = "filme -is:retweet"
+tweets = client.search_recent_tweets(query=query, max_results=10)
 
-stream.add_rules(tweepy.StreamRule("filme"))
+if not tweets:
+    print("❌ Nenhum tweet encontrado.")
+    raise ValueError("No tweets found!")
 
-print("Iniciando coleta de tweets...")
-stream.filter()
+for tweet in tweets.data:
+    collection.insert_one(tweet)
+
+print("✅ Tweets salvos com sucesso!")
+
+client.close()
