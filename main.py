@@ -1,36 +1,10 @@
 import os
-import tweepy
-from pymongo import MongoClient
-from dotenv import load_dotenv
+from config import create_app
 
-# Load environment variables
-load_dotenv()
+env = os.getenv('FLASK_ENV', 'dev')
 
-# Retrieve credentials
-bearer_token = os.getenv('BEARER_TOKEN')
-mongo_uri  = os.getenv('MONGO_CLIENT')
+app = create_app(env)
 
-# Verify if environment variables are loaded
-if not all([bearer_token, mongo_uri]):
-    raise ValueError("One or more environment variables are missing!")
-
-# Connect to MongoDB Atlas
-client = MongoClient(mongo_uri)
-db = client["twitter_db"]
-collection = db["tweets"]
-
-client = tweepy.Client(bearer_token)
-
-query = "filme -is:retweet"
-tweets = client.search_recent_tweets(query=query, max_results=10)
-
-if not tweets:
-    print("❌ Nenhum tweet encontrado.")
-    raise ValueError("No tweets found!")
-
-for tweet in tweets.data:
-    collection.insert_one(tweet)
-
-print("✅ Tweets salvos com sucesso!")
-
-client.close()
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
