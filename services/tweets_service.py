@@ -2,6 +2,8 @@ from datetime import datetime
 from time import sleep
 from typing import List, Dict, Any
 
+from bson import json_util
+
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError, DuplicateKeyError
 from flask import current_app, g
@@ -43,7 +45,7 @@ class TweetService:
         """Orchestrate full fetch/store workflow"""
         try:
             # Check existing tweets
-            if not self.tweets_collection:
+            if self.tweets_collection is None:
                 current_app.logger.debug("Returning cached tweets")
                 return self._get_cached_tweets()
 
@@ -78,10 +80,12 @@ class TweetService:
     def _get_cached_tweets(self) -> List[Dict[str, Any]]:
         """Retrieve all stored tweets from database"""
         try:
-            return list(self.tweets_collection.find(
+            tweets = list(self.tweets_collection.find(
                 {},
                 {"_id": 0, "tweet_id": 1, "text": 1, "author": 1, "created_at": 1}
             ))
+
+            return json_util.loads(json_util.dumps(tweets))
         except PyMongoError as e:
             current_app.logger.error(f"Cache retrieval failed: {str(e)}")
             return []
