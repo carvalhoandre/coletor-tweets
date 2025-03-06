@@ -82,10 +82,25 @@ class TweetService:
         try:
             tweets = list(self.tweets_collection.find(
                 {},
-                {"_id": 0, "tweet_id": 1, "text": 1, "author": 1, "created_at": 1}
+                {
+                    "_id": 0,
+                    "tweet_id": 1,
+                    "text": 1,
+                    "author": 1,
+                    "created_at": 1,
+                    "stored_at": 1,
+                    "source": 1,
+                    "processed": 1
+                }
             ))
 
-            return json_util.loads(json_util.dumps(tweets))
+            for tweet in tweets:
+                for field in ["created_at", "stored_at"]:
+                    if field in tweet and isinstance(tweet[field], datetime):
+                        tweet[field] = tweet[field].isoformat()
+
+            return tweets
+
         except PyMongoError as e:
             current_app.logger.error(f"Cache retrieval failed: {str(e)}")
             return []
