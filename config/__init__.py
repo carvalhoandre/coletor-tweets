@@ -6,7 +6,6 @@ from flask import Flask, g, current_app
 from flask_cors import CORS
 
 from config.mongo_db import get_mongo_db
-from utils.auth_token import handle_token
 from utils import error_handler
 from config.settings import DevConfig, ProdConfig
 
@@ -58,8 +57,6 @@ def create_app(env='dev'):
     else:
         app.config.from_object(DevConfig)
         print("🛠️ Development Mode Enabled")
-
-    handle_token()
 
     from resources.tweets_resource import tweets_bp
     app.register_blueprint(tweets_bp)

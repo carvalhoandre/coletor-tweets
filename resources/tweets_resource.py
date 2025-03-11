@@ -68,4 +68,3 @@ def hourly_metrics():
     except Exception as e:
         current_app.logger.error(f"Unexpected error: {str(e)}")
         return standard_response(False, "Internal error", 500)
-    
