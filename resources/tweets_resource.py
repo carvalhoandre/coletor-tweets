@@ -1,6 +1,6 @@
 from flask import Blueprint, current_app, request
 
-from preprocess.tweets import process_tweet
+from preprocess.tweets_preprocess import process_tweet
 from utils.response_http_util import standard_response
 from services.tweets_service import TweetService
 

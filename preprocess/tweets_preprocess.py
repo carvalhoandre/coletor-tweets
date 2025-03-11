@@ -29,4 +29,4 @@ def process_tweet(raw_tweets: list) -> list[dict[str, str | Any]] | None:
         sentiment = sia.polarity_scores(cleaned_tweet)["compound"]
         processed_tweets.append({"text": cleaned_tweet, "sentiment": sentiment, "timestamp": tweet["created_at"]})
 
-        return processed_tweets
+    return processed_tweets
