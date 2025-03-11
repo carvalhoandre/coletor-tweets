@@ -1,4 +1,4 @@
-from flask import Blueprint, current_app
+from flask import Blueprint, current_app, request
 from utils.response_http_util import standard_response
 from services.tweets_service import TweetService
 
@@ -10,7 +10,8 @@ tweet_service = TweetService()
 def fetch_tweets():
     """Fetch tweets and return them as a JSON response"""
     try:
-        tweets = tweet_service.get_tweets()
+        force_refresh = request.args.get('force_refresh', "false").lower() == "true"
+        tweets = tweet_service.get_tweets(force_refresh=force_refresh)
 
         if not tweets:
             return standard_response(False, "No tweets available", 404)
