@@ -7,10 +7,22 @@ from pymongo.errors import PyMongoError, DuplicateKeyError
 from flask import current_app, g
 import tweepy
 
+from analytics.tweets_analytic import analytic_tweets
+
 class TweetService:
     def __init__(self):
         self._tweets_collection: Optional[Collection] = None
         self._twitter_client: Optional[tweepy.Client] = None
+
+    @property
+    def metrics_collection(self) -> Collection:
+        """
+        Lazy-loaded MongoDB collection for tweet metrics
+        """
+        if 'mongo_db' not in g:
+            current_app.logger.error("Database connection not initialized")
+            raise RuntimeError("Database connection not initialized")
+        return g.mongo_db["tweets_metrics"]
 
     @property
     def tweets_collection(self) -> Collection:
@@ -160,4 +172,39 @@ class TweetService:
             current_app.logger.warning(f"Duplicate tweets detected and skipped: {str(e)}")
         except PyMongoError as e:
             current_app.logger.error(f"Storage failed: {str(e)}")
+            raise
+
+    def process_hourly_metrics(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """
+        Calculate the average hourly sentiment from tweets and save the results
+        in the 'tweets_metrics' collection.
+
+        Parameters:
+        - force_refresh: If True, forces the retrieval of new tweets even if there is cached data.
+
+        Returns:
+        - A list of dictionaries with average hourly sentiment.
+        """
+        try:
+            tweets = self.get_tweets(force_refresh=force_refresh)
+            if not tweets:
+                raise ValueError("No tweets available for metrics analysis")
+
+            hourly_stats = analytic_tweets(tweets)
+
+            if hourly_stats.empty:
+                raise ValueError("No hourly stats received")
+
+            hourly_stats_list = hourly_stats.to_dict("records")
+
+            self.metrics_collection.insert_many(hourly_stats_list, ordered=False)
+            current_app.logger.info("Hourly metrics saved successfully.")
+
+            for doc in hourly_stats_list:
+                if "_id" in doc:
+                    doc["_id"] = str(doc["_id"])
+
+            return hourly_stats_list
+        except Exception as e:
+            current_app.logger.error(f"Error saving hourly metrics: {str(e)}")
             raise
