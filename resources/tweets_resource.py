@@ -1,5 +1,4 @@
 from flask import Blueprint, current_app, request
-
 from preprocess.tweets_preprocess import process_tweet
 from utils.response_http_util import standard_response
 from services.tweets_service import TweetService
@@ -69,3 +68,4 @@ def hourly_metrics():
     except Exception as e:
         current_app.logger.error(f"Unexpected error: {str(e)}")
         return standard_response(False, "Internal error", 500)
+    

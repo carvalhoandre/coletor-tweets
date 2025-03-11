@@ -10,7 +10,6 @@ from utils.auth_token import handle_token
 from utils import error_handler
 from config.settings import DevConfig, ProdConfig
 
-
 load_dotenv()
 
 def create_app(env='dev'):
