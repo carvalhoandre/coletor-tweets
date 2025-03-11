@@ -83,6 +83,57 @@ Coletar tweets contendo a palavra-chave Neymar e salvar no arquivo coleta.csv:
 ```
 python coletor.py --keywords "Neymar" --output coleta.csv
 ```
+## API Endpoints
+
+A seguir, estão listados os endpoints disponíveis na API do projeto:
+
+### GET `/fetch_tweets`
+
+- **Descrição:**  
+  Busca tweets e retorna-os como resposta em JSON.
+
+- **Parâmetros de Consulta:**
+  - `force_refresh` (opcional): Se definido como `true`, força a atualização dos tweets.
+
+- **Resposta:**
+  - **Sucesso (200):**  
+    JSON com status verdadeiro, mensagem "Tweets retrieved" e os dados dos tweets.
+  - **Nenhum tweet encontrado (404):**  
+    JSON com status falso e mensagem "No tweets available".
+  - **Erros (400 ou 500):**  
+    JSON com status falso e mensagem de erro (400 para erros de validação e 500 para erros internos).
+
+### GET `/feelings`
+
+- **Descrição:**  
+  Busca tweets, processa os sentimentos extraídos dos mesmos e retorna o resultado como JSON.
+
+- **Parâmetros de Consulta:**
+  - `force_refresh` (opcional): Se definido como `true`, força a atualização dos tweets.
+
+- **Resposta:**
+  - **Sucesso (200):**  
+    JSON com status verdadeiro, mensagem "Feelings retrieved" e os dados dos sentimentos processados.
+  - **Nenhum tweet encontrado (404):**  
+    JSON com status falso e mensagem "No tweets available".
+  - **Erros (400 ou 500):**  
+    JSON com status falso e mensagem de erro.
+
+### GET `/hourly_metrics`
+
+- **Descrição:**  
+  Processa os tweets para extrair métricas horárias e retorna o resultado como JSON.
+
+- **Parâmetros de Consulta:**
+  - `force_refresh` (opcional): Se definido como `true`, força a atualização dos dados.
+
+- **Resposta:**
+  - **Sucesso (200):**  
+    JSON com status verdadeiro, mensagem "Feelings retrieved" e os dados das métricas horárias.
+  - **Nenhum dado disponível (404):**  
+    JSON com status falso e mensagem "No tweets available".
+  - **Erros (400 ou 500):**  
+    JSON com status falso e mensagem de erro.
 
 ## Contribuição
 Contribuições são bem-vindas!
