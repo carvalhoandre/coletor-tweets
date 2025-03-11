@@ -191,20 +191,30 @@ class TweetService:
                 raise ValueError("No tweets available for metrics analysis")
 
             hourly_stats = analytic_tweets(tweets)
-
             if hourly_stats.empty:
                 raise ValueError("No hourly stats received")
 
             hourly_stats_list = hourly_stats.to_dict("records")
 
-            self.metrics_collection.insert_many(hourly_stats_list, ordered=False)
+            # For each metric (hourly), perform an upsert into the collection to avoid duplicates
+            for doc in hourly_stats_list:
+                hour = doc.get("hour")
+                # Updates or inserts the document based on the "hour" field
+                self.metrics_collection.update_one(
+                    {"hour": hour},
+                    {"$set": doc},
+                    upsert=True
+                )
             current_app.logger.info("Hourly metrics saved successfully.")
 
-            for doc in hourly_stats_list:
+            all_metrics_cursor = self.metrics_collection.find({}, {"_id": 0})
+            all_metrics = list(all_metrics_cursor)
+
+            for doc in all_metrics:
                 if "_id" in doc:
                     doc["_id"] = str(doc["_id"])
 
-            return hourly_stats_list
+            return all_metrics
         except Exception as e:
             current_app.logger.error(f"Error saving hourly metrics: {str(e)}")
             raise
