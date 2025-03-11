@@ -1,8 +1,13 @@
-from pymongo import MongoClient
 import os
+from pymongo import MongoClient
 
 MONGO_URI = os.getenv("DATABASE_MONGO_URI_PROD") or os.getenv("DATABASE_MONGO_URI_DEV")
-client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+client = MongoClient(
+    MONGO_URI,
+    serverSelectionTimeoutMS=5000,
+    tls=True,
+    tlsAllowInvalidCertificates=False
+)
 
 try:
     client.admin.command('ping')
