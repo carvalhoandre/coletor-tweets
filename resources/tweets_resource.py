@@ -1,4 +1,6 @@
 from flask import Blueprint, current_app, request
+
+from preprocess.tweets import process_tweet
 from utils.response_http_util import standard_response
 from services.tweets_service import TweetService
 
@@ -17,6 +19,28 @@ def fetch_tweets():
             return standard_response(False, "No tweets available", 404)
 
         return standard_response(True, "Tweets retrieved", 200, tweets)
+
+    except ValueError as ve:
+        current_app.logger.error(f"ValueError: {str(ve)}")
+        return standard_response(False, str(ve), 400)
+
+    except Exception as e:
+        current_app.logger.error(f"Unexpected error: {str(e)}")
+        return standard_response(False, "Internal error", 500)
+
+@tweets_bp.route('/feelings', methods=['GET'])
+def get_feelings():
+    """Fetch tweets and process feelings return them as a JSON response"""
+    try:
+        force_refresh = request.args.get('force_refresh', "false").lower() == "true"
+        tweets = tweet_service.get_tweets(force_refresh=force_refresh)
+
+        if not tweets:
+            return standard_response(False, "No tweets available", 404)
+
+        feelings = process_tweet(tweets)
+
+        return standard_response(True, "Feelings retrieved", 200, feelings)
 
     except ValueError as ve:
         current_app.logger.error(f"ValueError: {str(ve)}")
