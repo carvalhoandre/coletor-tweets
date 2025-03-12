@@ -1,7 +1,12 @@
 from typing import Any
 
+import nltk
+
+nltk.download('vader_lexicon')
+
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import re
+
 
 def clean_text(text):
     """
