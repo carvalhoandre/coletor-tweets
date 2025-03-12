@@ -6,7 +6,10 @@ client = MongoClient(
     MONGO_URI,
     serverSelectionTimeoutMS=5000,
     tls=True,
-    tlsAllowInvalidCertificates=True, # remove after test
+    tlsAllowInvalidCertificates=False,
+    tlsCAFile=None,
+    tlsDisableOCSPEndpointCheck=True,
+    ssl_cert_reqs="CERT_REQUIRED"
 )
 
 try:
