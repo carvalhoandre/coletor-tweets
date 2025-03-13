@@ -27,11 +27,11 @@ def create_app(env='dev'):
         app.config.from_object(DevConfig)
         print("🛠️ Development Mode Enabled")
 
-    cors_url = os.getenv('BASE_URL', 'http://localhost:3000')
-    CORS(app, resources={r"/api/*": {"origins": cors_url}},
-         methods=["GET", "POST", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-         supports_credentials=True)
+        cors_url = os.getenv('BASE_URL', 'http://localhost:5173')
+        CORS(app, resources={r"/*": {"origins": cors_url}},
+            methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+            supports_credentials=False)
 
     @app.before_request
     def setup_services():

@@ -45,18 +45,11 @@ class TweetService:
         return self._twitter_client
 
     def get_tweets(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
-        """
-        Retrieve tweets.
-
-        If force_refresh is False and cached tweets exist, returns cached tweets.
-        Otherwise, fetches new tweets from Twitter API, processes, stores, and returns them.
-        """
+        """Retrieve tweets, with caching and optional refresh."""
         try:
             if not force_refresh and self._has_cached_tweets():
-                current_app.logger.debug("Returning cached tweets")
                 return self._get_cached_tweets()
 
-            current_app.logger.info("Fetching new tweets")
             raw_tweets = self._fetch_from_twitter()
             if not raw_tweets:
                 raise ValueError("No tweets received from Twitter API")
@@ -81,15 +74,17 @@ class TweetService:
             return False
 
     def _get_cached_tweets(self) -> List[Dict[str, Any]]:
-        """Retrieve all stored tweets from the database with selected fields."""
+        """Retrieve stored tweets, including new user fields."""
         try:
             tweets_cursor = self.tweets_collection.find(
                 {},
                 {
-                    "_id": 0,
+                    "_id": 1,
                     "tweet_id": 1,
                     "text": 1,
-                    "author": 1,
+                    "author_id": 1,
+                    "author_name": 1,
+                    "author_photo": 1,
                     "created_at": 1,
                     "stored_at": 1,
                     "source": 1,
@@ -97,8 +92,11 @@ class TweetService:
                 }
             )
             tweets = list(tweets_cursor)
-            # Convert datetime objects to ISO format strings for output.
+
+            # Convert ObjectId and datetime fields
             for tweet in tweets:
+                if "_id" in tweet:
+                    tweet["_id"] = str(tweet["_id"])
                 for field in ["created_at", "stored_at"]:
                     if field in tweet and isinstance(tweet[field], datetime):
                         tweet[field] = tweet[field].isoformat()
@@ -108,11 +106,7 @@ class TweetService:
             return []
 
     def _fetch_from_twitter(self, max_retries: int = 3) -> List[Dict[str, Any]]:
-        """
-        Fetch raw tweets from Twitter API with retry logic for rate limits.
-
-        Returns a list of tweet data dictionaries.
-        """
+        """Fetch tweets from Twitter API with user details."""
         retries = 0
         while retries < max_retries:
             try:
@@ -120,14 +114,33 @@ class TweetService:
                     query="neymar -is:retweet",
                     max_results=10,
                     tweet_fields=["text", "author_id", "created_at", "public_metrics"],
-                    expansions=["author_id"]
+                    expansions=["author_id"],
+                    user_fields=["name", "profile_image_url"]
                 )
-                return [tweet.data for tweet in response.data] if response.data else []
+
+                if not response.data:
+                    return []
+
+                users_map = {user.id: user.data for user in response.includes.get("users", [])}
+                tweets = []
+
+                for tweet in response.data:
+                    author_id = tweet.data["author_id"]
+                    author_info = users_map.get(author_id, {})
+
+                    tweets.append({
+                        "tweet_id": tweet.data.get("id"),
+                        "text": tweet.data.get("text"),
+                        "author_id": author_id,
+                        "author_name": author_info.get("name", "Unknown"),
+                        "author_photo": author_info.get("profile_image_url", ""),
+                        "created_at": tweet.data.get("created_at"),
+                        "public_metrics": tweet.data.get("public_metrics"),
+                    })
+                return tweets
             except tweepy.TooManyRequests as e:
                 retry_after = int(e.response.headers.get('Retry-After', 60))
-                current_app.logger.warning(
-                    f"Rate limited. Retrying in {retry_after}s (attempt {retries + 1}/{max_retries})"
-                )
+                current_app.logger.warning(f"Rate limited. Retrying in {retry_after}s (attempt {retries + 1}/{max_retries})")
                 sleep(retry_after)
                 retries += 1
             except tweepy.TweepyException as e:
@@ -146,7 +159,6 @@ class TweetService:
         processed = []
         for tweet in raw_tweets:
             tweet_copy = tweet.copy()
-            tweet_copy["tweet_id"] = tweet_copy.pop("id", None)
             tweet_copy["stored_at"] = current_time
             tweet_copy["source"] = "twitter_api"
             tweet_copy["processed"] = False
@@ -165,9 +177,8 @@ class TweetService:
                 ordered=False,
                 bypass_document_validation=False
             )
-            current_app.logger.info(
-                f"Stored {len(result.inserted_ids)}/{len(tweets)} new tweets"
-            )
+
+            current_app.logger.info(f"Stored {len(result.inserted_ids)}/{len(tweets)} new tweets")
         except DuplicateKeyError as e:
             current_app.logger.warning(f"Duplicate tweets detected and skipped: {str(e)}")
         except PyMongoError as e:
