@@ -1,7 +1,9 @@
 import os
 from pymongo import MongoClient
 
-MONGO_URI = os.getenv("DATABASE_MONGO_URI_PROD") or os.getenv("DATABASE_MONGO_URI_DEV")
+environment = os.getenv('FLASK_ENV', 'dev')
+MONGO_URI = os.getenv("DATABASE_MONGO_URI_PROD") if environment == 'prod' else os.getenv("DATABASE_MONGO_URI_DEV")
+
 client = MongoClient(
     MONGO_URI,
     serverSelectionTimeoutMS=5000,

@@ -2,6 +2,8 @@ import pandas as pd
 from flask import current_app
 from preprocess.tweets_preprocess import process_tweet
 
+from utils.looger import handle_logger
+
 def analytic_tweets(raw_tweets: list):
     """
     Analyzes a list of raw tweets and calculates various metrics per hour.
@@ -22,11 +24,10 @@ def analytic_tweets(raw_tweets: list):
     """
     try:
         processed_tweets = process_tweet(raw_tweets)
-
         df = pd.DataFrame(processed_tweets)
 
         if df.empty:
-            current_app.logger.warning("No tweets available for analysis.")
+            handle_logger(message=f"No tweets available for analysis.", type_logger="warning")
             return pd.DataFrame()
 
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
@@ -52,5 +53,5 @@ def analytic_tweets(raw_tweets: list):
 
         return hourly_stats
     except Exception as e:
-        current_app.logger.error(f"Error analyzing tweets: {str(e)}")
+        handle_logger(message=f"Error analyzing tweets: {str(e)}", type_logger="error")
         raise

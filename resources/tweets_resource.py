@@ -7,6 +7,8 @@ tweets_bp = Blueprint('tweets', __name__)
 
 tweet_service = TweetService()
 
+from utils.looger import handle_logger
+
 @tweets_bp.route('/fetch_tweets', methods=['GET'])
 def fetch_tweets():
     """Fetch tweets and return them as a JSON response"""
@@ -20,11 +22,11 @@ def fetch_tweets():
         return standard_response(True, "Tweets retrieved", 200, tweets)
 
     except ValueError as ve:
-        current_app.logger.error(f"ValueError: {str(ve)}")
+        handle_logger(message=f"ValueError: {str(ve)}", type_logger="error")
         return standard_response(False, str(ve), 400)
 
     except Exception as e:
-        current_app.logger.error(f"Unexpected error: {str(e)}")
+        handle_logger(f"Unexpected error: {str(e)}", type_logger="error")
         return standard_response(False, "Internal error", 500)
 
 @tweets_bp.route('/feelings', methods=['GET'])
@@ -42,11 +44,11 @@ def get_feelings():
         return standard_response(True, "Feelings retrieved", 200, feelings)
 
     except ValueError as ve:
-        current_app.logger.error(f"ValueError: {str(ve)}")
+        handle_logger(message=f"ValueError: {str(ve)}", type_logger="error")
         return standard_response(False, str(ve), 400)
 
     except Exception as e:
-        current_app.logger.error(f"Unexpected error: {str(e)}")
+        handle_logger(message=f"Unexpected error: {str(e)}", type_logger="error")
         return standard_response(False, "Internal error", 500)
 
 @tweets_bp.route('/hourly_metrics', methods=['GET'])
@@ -62,9 +64,8 @@ def hourly_metrics():
         return standard_response(True, "Feelings retrieved", 200, metrics)
 
     except ValueError as ve:
-        current_app.logger.error(f"ValueError: {str(ve)}")
+        handle_logger(message=f"ValueError: {str(ve)}", type_logger="error")
         return standard_response(False, str(ve), 400)
-
-    except Exception as e:
-        current_app.logger.error(f"Unexpected error: {str(e)}")
+    except Exception as ve:
+        handle_logger(message=f"Unexpected error:: {str(ve)}", type_logger="error")
         return standard_response(False, "Internal error", 500)

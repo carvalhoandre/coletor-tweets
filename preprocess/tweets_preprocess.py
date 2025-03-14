@@ -36,14 +36,12 @@ def process_tweet(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         cleaned_tweet = clean_text(text)
         sentiment = sia.polarity_scores(cleaned_tweet)["compound"]
 
-        # Extração segura de valores adicionais
         tweet_id = tweet.get("tweet_id", "unknown")
         author_id = tweet.get("author_id", "unknown")
         author_name = tweet.get("author_name", "Unknown")
         author_photo = tweet.get("author_photo", "")
         created_at = tweet.get("created_at", "")
 
-        # Convertendo timestamp para datetime (caso necessário)
         if isinstance(created_at, str):
             try:
                 timestamp = datetime.fromisoformat(created_at)
@@ -52,12 +50,11 @@ def process_tweet(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         else:
             timestamp = created_at
 
-        # Extraindo métricas de engajamento **com verificação**
         public_metrics = tweet.get("public_metrics", {})
         likes = public_metrics.get("like_count", 0) if isinstance(public_metrics, dict) else 0
         retweets = public_metrics.get("retweet_count", 0) if isinstance(public_metrics, dict) else 0
         replies = public_metrics.get("reply_count", 0) if isinstance(public_metrics, dict) else 0
-        shares = public_metrics.get("quote_count", 0) if isinstance(public_metrics, dict) else 0  # Considerando "quote_count" como compartilhamentos
+        shares = public_metrics.get("quote_count", 0) if isinstance(public_metrics, dict) else 0
 
         processed_tweets.append({
             "tweet_id": tweet_id,

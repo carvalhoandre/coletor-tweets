@@ -2,8 +2,6 @@ from dotenv import load_dotenv
 
 from config.mongo_db import get_mongo_db
 from config.settings import DevConfig, ProdConfig
-
-load_dotenv()
 import os
 from dotenv import load_dotenv
 
@@ -21,6 +19,8 @@ def create_app(env='dev'):
     """Factory function to create Flask App instance."""
     app = Flask(__name__)
 
+    env = env.lower()
+
     if env == "prod":
         app.config.from_object(ProdConfig)
     else:
@@ -31,7 +31,8 @@ def create_app(env='dev'):
         CORS(app, resources={r"/*": {"origins": cors_url}},
             methods=["GET", "POST", "OPTIONS"],
             allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-            supports_credentials=False)
+            supports_credentials=False
+        )
 
     @app.before_request
     def setup_services():
@@ -46,8 +47,11 @@ def create_app(env='dev'):
     def cleanup_services(exception=None):
         close_twitter_client(exception)
 
-    from resources.tweets_resource import tweets_bp
-    app.register_blueprint(tweets_bp)
+    try:
+        from resources.tweets_resource import tweets_bp
+        app.register_blueprint(tweets_bp)
+    except ImportError as e:
+        app.logger.error(f"❌ Blueprint registration failed: {str(e)}")
 
     app.register_error_handler(Exception, error_handler.handle_exception)
 

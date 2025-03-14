@@ -8,6 +8,9 @@ from flask import current_app, g
 import tweepy
 
 from analytics.tweets_analytic import analytic_tweets
+from preprocess.tweets_preprocess import process_tweet
+
+from utils.looger import handle_logger
 
 class TweetService:
     def __init__(self):
@@ -20,7 +23,7 @@ class TweetService:
         Lazy-loaded MongoDB collection for tweet metrics
         """
         if 'mongo_db' not in g:
-            current_app.logger.error("Database connection not initialized")
+            handle_logger(message="Database connection not initialized", type_logger="error")
             raise RuntimeError("Database connection not initialized")
         return g.mongo_db["tweets_metrics"]
 
@@ -29,7 +32,7 @@ class TweetService:
         """Lazy-loaded MongoDB tweets collection."""
         if self._tweets_collection is None:
             if 'mongo_db' not in g:
-                current_app.logger.error("Database connection not initialized")
+                handle_logger(message="Database connection not initialized", type_logger="error")
                 raise RuntimeError("Database connection not initialized")
             self._tweets_collection = g.mongo_db["tweets"]
         return self._tweets_collection
@@ -39,7 +42,7 @@ class TweetService:
         """Lazy-loaded Twitter client."""
         if self._twitter_client is None:
             if not hasattr(g, 'twitter_client'):
-                current_app.logger.error("Twitter client not initialized")
+                handle_logger(message="Twitter client not initialized", type_logger="error")
                 raise RuntimeError("Twitter service unavailable")
             self._twitter_client = g.twitter_client
         return self._twitter_client
@@ -59,10 +62,10 @@ class TweetService:
             return processed_tweets
 
         except (PyMongoError, tweepy.TweepyException) as e:
-            current_app.logger.error(f"Tweet service failed: {str(e)}")
+            handle_logger(message=f"Tweet service failed: {str(e)}", type_logger="error")
             raise RuntimeError("Tweet service operation failed") from e
         except Exception as e:
-            current_app.logger.error(f"Unexpected error in tweet service: {str(e)}")
+            handle_logger(message=f"Unexpected error in tweet service: {str(e)}", type_logger="error")
             raise
 
     def _has_cached_tweets(self) -> bool:
@@ -70,7 +73,7 @@ class TweetService:
         try:
             return self.tweets_collection.count_documents({}, limit=1) > 0
         except PyMongoError as e:
-            current_app.logger.error(f"Cache check failed: {str(e)}")
+            handle_logger(message=f"Cache check failed: {str(e)}", type_logger="error")
             return False
 
     def _get_cached_tweets(self) -> List[Dict[str, Any]]:
@@ -102,7 +105,7 @@ class TweetService:
                         tweet[field] = tweet[field].isoformat()
             return tweets
         except PyMongoError as e:
-            current_app.logger.error(f"Cache retrieval failed: {str(e)}")
+            handle_logger(message=f"Cache retrieval failed: {str(e)}", type_logger="error")
             return []
 
     def _fetch_from_twitter(self, max_retries: int = 3) -> List[Dict[str, Any]]:
@@ -140,11 +143,11 @@ class TweetService:
                 return tweets
             except tweepy.TooManyRequests as e:
                 retry_after = int(e.response.headers.get('Retry-After', 60))
-                current_app.logger.warning(f"Rate limited. Retrying in {retry_after}s (attempt {retries + 1}/{max_retries})")
+                handle_logger(message=f"Rate limited. Retrying in {retry_after}s (attempt {retries + 1}/{max_retries})", type_logger="warning")
                 sleep(retry_after)
                 retries += 1
             except tweepy.TweepyException as e:
-                current_app.logger.error(f"Twitter API error: {str(e)}")
+                handle_logger(message=f"Twitter API error: {str(e)}", type_logger="error")
                 raise
         raise RuntimeError("Exceeded maximum retries due to rate limiting")
 
@@ -168,7 +171,7 @@ class TweetService:
     def _store_tweets(self, tweets: List[Dict[str, Any]]) -> None:
         """Store processed tweets in MongoDB."""
         if not tweets:
-            current_app.logger.warning("No tweets to store")
+            handle_logger(message="No tweets to store", type_logger="warning")
             return
 
         try:
@@ -177,15 +180,14 @@ class TweetService:
                 ordered=False,
                 bypass_document_validation=False
             )
-
-            current_app.logger.info(f"Stored {len(result.inserted_ids)}/{len(tweets)} new tweets")
+            handle_logger(message=f"Stored {len(result.inserted_ids)}/{len(tweets)} new tweets", type_logger="info")
         except DuplicateKeyError as e:
-            current_app.logger.warning(f"Duplicate tweets detected and skipped: {str(e)}")
+            handle_logger(message=f"Duplicate tweets detected and skipped: {str(e)}", type_logger="warning")
         except PyMongoError as e:
-            current_app.logger.error(f"Storage failed: {str(e)}")
+            handle_logger(message=f"Storage failed: {str(e)}", type_logger="error")
             raise
 
-    def process_hourly_metrics(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    def process_hourly_metrics(self, force_refresh: bool = False)-> Dict[str, Any]:
         """
         Calculate the average hourly sentiment from tweets and save the results
         in the 'tweets_metrics' collection.
@@ -194,7 +196,11 @@ class TweetService:
         - force_refresh: If True, forces the retrieval of new tweets even if there is cached data.
 
         Returns:
-        - A list of dictionaries with average hourly sentiment.
+       - dict: {
+            "metrics": List[Dict[str, Any]],  # List of hourly sentiment metrics
+            "tweets": List[Dict[str, Any]],   # List of collected tweets
+            "feelings": Any                   # Sentiment analysis results (depends on process_tweet)
+        }
         """
         try:
             tweets = self.get_tweets(force_refresh=force_refresh)
@@ -216,7 +222,8 @@ class TweetService:
                     {"$set": doc},
                     upsert=True
                 )
-            current_app.logger.info("Hourly metrics saved successfully.")
+
+            handle_logger(message="Hourly metrics saved successfully.", type_logger="info")
 
             all_metrics_cursor = self.metrics_collection.find({}, {"_id": 0})
             all_metrics = list(all_metrics_cursor)
@@ -225,7 +232,9 @@ class TweetService:
                 if "_id" in doc:
                     doc["_id"] = str(doc["_id"])
 
-            return all_metrics
+            feelings = process_tweet(tweets)
+
+            return { "metrics": all_metrics, "tweets": tweets, "feelings": feelings }
         except Exception as e:
-            current_app.logger.error(f"Error saving hourly metrics: {str(e)}")
+            handle_logger(message=f"Error saving hourly metrics: {str(e)}", type_logger="error")
             raise
