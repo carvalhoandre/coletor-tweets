@@ -2,7 +2,7 @@ import os
 import tweepy
 from flask import g, current_app
 
-from utils.looger import handle_logger
+from utils.logger import handle_logger
 
 def get_twitter_client():
     """Initialize and cache Twitter client in Flask's g object."""

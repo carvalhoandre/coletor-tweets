@@ -10,7 +10,7 @@ import tweepy
 from analytics.tweets_analytic import analytic_tweets
 from preprocess.tweets_preprocess import process_tweet
 
-from utils.looger import handle_logger
+from utils.logger import handle_logger
 
 class TweetService:
     def __init__(self):

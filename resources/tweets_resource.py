@@ -1,13 +1,11 @@
-from flask import Blueprint, current_app, request
+from flask import Blueprint, request
 from preprocess.tweets_preprocess import process_tweet
+from utils.logger import handle_logger
 from utils.response_http_util import standard_response
 from services.tweets_service import TweetService
 
 tweets_bp = Blueprint('tweets', __name__)
-
 tweet_service = TweetService()
-
-from utils.looger import handle_logger
 
 @tweets_bp.route('/fetch_tweets', methods=['GET'])
 def fetch_tweets():
@@ -26,7 +24,7 @@ def fetch_tweets():
         return standard_response(False, str(ve), 400)
 
     except Exception as e:
-        handle_logger(f"Unexpected error: {str(e)}", type_logger="error")
+        handle_logger(message=f"Unexpected error: {str(e)}", type_logger="error")
         return standard_response(False, "Internal error", 500)
 
 @tweets_bp.route('/feelings', methods=['GET'])
@@ -61,11 +59,12 @@ def hourly_metrics():
         if not metrics:
             return standard_response(False, "No tweets available", 404)
 
-        return standard_response(True, "Feelings retrieved", 200, metrics)
+        return standard_response(True, "Hourly metrics retrieved", 200, metrics)
 
     except ValueError as ve:
         handle_logger(message=f"ValueError: {str(ve)}", type_logger="error")
         return standard_response(False, str(ve), 400)
-    except Exception as ve:
-        handle_logger(message=f"Unexpected error:: {str(ve)}", type_logger="error")
+
+    except Exception as e:
+        handle_logger(message=f"Unexpected error: {str(e)}", type_logger="error")
         return standard_response(False, "Internal error", 500)

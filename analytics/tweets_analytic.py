@@ -2,7 +2,7 @@ import pandas as pd
 from flask import current_app
 from preprocess.tweets_preprocess import process_tweet
 
-from utils.looger import handle_logger
+from utils.logger import handle_logger
 
 def analytic_tweets(raw_tweets: list):
     """

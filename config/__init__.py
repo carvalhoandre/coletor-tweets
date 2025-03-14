@@ -5,7 +5,7 @@ from config.settings import DevConfig, ProdConfig
 import os
 from dotenv import load_dotenv
 
-from flask import Flask, g
+from flask import Flask, g, request
 from flask_cors import CORS
 
 from config.mongo_db import get_mongo_db
@@ -27,12 +27,23 @@ def create_app(env='dev'):
         app.config.from_object(DevConfig)
         print("🛠️ Development Mode Enabled")
 
-        cors_url = os.getenv('BASE_URL', 'http://localhost:5173')
-        CORS(app, resources={r"/*": {"origins": cors_url}},
-            methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-            supports_credentials=False
-        )
+    cors_origins = os.getenv('BASE_URL', 'http://localhost:5173')
+
+    CORS(
+        app,
+        resources={r"/*": {"origins": cors_origins}},
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+        methods=["GET", "POST", "OPTIONS"]
+    )
+
+    @app.after_request
+    def apply_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", cors_origins)
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
     @app.before_request
     def setup_services():
