@@ -62,3 +62,33 @@ def analytic_tweets(raw_tweets: list):
     except Exception as e:
         handle_logger(message=f"Error analyzing tweets: {str(e)}", type_logger="error")
         raise
+
+
+def calculate_hype_score(hourly_stats):
+    """
+    Calculate a HYPE score based on tweets volume, engagement, and sentiment.
+    Formula: (tweets * 0.4) + (likes * 0.3) + (retweets * 0.2) + (replies * 0.1) + (sentiment * 10)
+    """
+    try:
+        hype_scores = []
+
+        for record in hourly_stats:
+            tweet_count = record.get("tweet_count", 0)
+            likes_mean = record.get("likes_mean", 0)
+            retweets_mean = record.get("retweets_mean", 0)
+            replies_mean = record.get("replies_mean", 0)
+            sentiment_mean = record.get("sentiment_mean", 0)
+
+            hype_score = (tweet_count * 0.4) + (likes_mean * 0.3) + (retweets_mean * 0.2) + (replies_mean * 0.1) + (
+                        sentiment_mean * 10)
+
+            hype_scores.append({
+                "hour": record.get("hour"),
+                "hype_score": round(hype_score, 2)
+            })
+
+        return hype_scores
+
+    except Exception as e:
+        handle_logger(message=f"Error calculating hype score: {str(e)}", type_logger="error")
+        return []

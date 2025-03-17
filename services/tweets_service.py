@@ -7,7 +7,7 @@ from pymongo.errors import PyMongoError, DuplicateKeyError
 from flask import current_app, g
 import tweepy
 
-from analytics.tweets_analytic import analytic_tweets
+from analytics.tweets_analytic import analytic_tweets, calculate_hype_score
 from preprocess.tweets_preprocess import process_tweet
 
 from utils.logger import handle_logger
@@ -195,20 +195,16 @@ class TweetService:
             handle_logger(message=f"Storage failed: {str(e)}", type_logger="error")
             raise
 
-    def process_hourly_metrics(self, force_refresh: bool = False, search: str = '')-> Dict[str, Any]:
+    def process_hourly_metrics(self, force_refresh: bool = False, search: str = '') -> Dict[str, Any]:
         """
-        Calculate the average hourly sentiment from tweets and save the results
-        in the 'tweets_metrics' collection.
+        Calculate and store hourly tweet metrics, including engagement and hype score.
 
         Parameters:
-        - force_refresh: If True, forces the retrieval of new tweets even if there is cached data.
+        - force_refresh (bool): Forces new tweet retrieval.
+        - search (str): Search term for filtering tweets.
 
         Returns:
-       - dict: {
-            "metrics": List[Dict[str, Any]],  # List of hourly sentiment metrics
-            "tweets": List[Dict[str, Any]],   # List of collected tweets
-            "feelings": Any                   # Sentiment analysis results (depends on process_tweet)
-        }
+        - dict: Contains hourly metrics, processed tweets, and sentiment analysis.
         """
         try:
             tweets = self.get_tweets(force_refresh=force_refresh, search=search)
@@ -220,35 +216,51 @@ class TweetService:
                 raise ValueError("No hourly stats received")
 
             hourly_stats_list = hourly_stats.to_dict("records")
+            hype_scores = calculate_hype_score(hourly_stats_list)
 
-            # For each metric (hourly), perform an upsert into the collection to avoid duplicates
-            for doc in hourly_stats_list:
-                hour = doc.get("hour")
+            total_tweets = len(tweets)
 
-                # Ensure likes, retweets, and replies are calculated
-                doc["likes_mean"] = sum(tweet["likes"] for tweet in tweets if "likes" in tweet) / len(tweets)
-                doc["retweets_mean"] = sum(tweet["retweets"] for tweet in tweets if "retweets" in tweet) / len(tweets)
-                doc["replies_mean"] = sum(tweet["replies"] for tweet in tweets if "replies" in tweet) / len(tweets)
+            # Initialize aggregated metrics
+            total_likes = sum(tweet.get("likes", 0) for tweet in tweets)
+            total_retweets = sum(tweet.get("retweets", 0) for tweet in tweets)
+            total_replies = sum(tweet.get("replies", 0) for tweet in tweets)
 
-                # Updates or inserts the document based on the "hour" field
+            # Compute means safely (avoid division by zero)
+            likes_mean = total_likes / total_tweets if total_tweets > 0 else 0
+            retweets_mean = total_retweets / total_tweets if total_tweets > 0 else 0
+            replies_mean = total_replies / total_tweets if total_tweets > 0 else 0
+
+            # Process hourly stats with engagement and hype scores
+            for record in hourly_stats_list:
+                hour = record.get("hour")
+
+                # Add engagement metrics
+                record["likes_mean"] = likes_mean
+                record["retweets_mean"] = retweets_mean
+                record["replies_mean"] = replies_mean
+
+                # Add hype score
+                hype = next((h for h in hype_scores if h["hour"] == hour), {"hype_score": 0})
+                record["hype_score"] = hype["hype_score"]
+
+                # Perform single database update per document
                 self.metrics_collection.update_one(
                     {"hour": hour},
-                    {"$set": doc},
+                    {"$set": record},
                     upsert=True
                 )
 
-            handle_logger(message="Hourly metrics saved successfully.", type_logger="info")
+            handle_logger(message="✅ Hourly metrics saved successfully.", type_logger="info")
 
+            # Retrieve updated metrics
             all_metrics_cursor = self.metrics_collection.find({}, {"_id": 0})
             all_metrics = list(all_metrics_cursor)
 
-            for doc in all_metrics:
-                if "_id" in doc:
-                    doc["_id"] = str(doc["_id"])
-
+            # Process tweet sentiments
             feelings = process_tweet(tweets)
 
-            return { "metrics": all_metrics, "tweets": tweets, "feelings": feelings }
+            return {"metrics": all_metrics, "tweets": tweets, "feelings": feelings}
+
         except Exception as e:
-            handle_logger(message=f"Error saving hourly metrics: {str(e)}", type_logger="error")
+            handle_logger(message=f"❌ Error saving hourly metrics: {str(e)}", type_logger="error")
             raise
