@@ -32,43 +32,38 @@ def process_tweet(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     processed_tweets = []
 
     for tweet in raw_tweets:
-        text = tweet.get("text", "")
+        text = tweet.get("text", "").strip()
         cleaned_tweet = clean_text(text)
         sentiment = sia.polarity_scores(cleaned_tweet)["compound"]
 
-        tweet_id = tweet.get("tweet_id", "unknown")
-        author_id = tweet.get("author_id", "unknown")
-        author_name = tweet.get("author_name", "Unknown")
-        author_photo = tweet.get("author_photo", "")
-        created_at = tweet.get("created_at", "")
-
+        # Ensure valid timestamps
+        created_at = tweet.get("created_at")
+        timestamp = None
         if isinstance(created_at, str):
             try:
                 timestamp = datetime.fromisoformat(created_at)
             except ValueError:
                 timestamp = None
-        else:
-            timestamp = created_at
 
-        public_metrics = tweet.get("public_metrics", {})
-        likes = public_metrics.get("like_count", 0) if isinstance(public_metrics, dict) else 0
-        retweets = public_metrics.get("retweet_count", 0) if isinstance(public_metrics, dict) else 0
-        replies = public_metrics.get("reply_count", 0) if isinstance(public_metrics, dict) else 0
-        shares = public_metrics.get("quote_count", 0) if isinstance(public_metrics, dict) else 0
-
-        processed_tweets.append({
-            "tweet_id": tweet_id,
+        # Extract author information
+        processed_tweet = {
+            "tweet_id": tweet.get("tweet_id", "unknown"),
             "text": text,
             "cleaned_text": cleaned_tweet,
             "sentiment": sentiment,
             "timestamp": timestamp.isoformat() if timestamp else None,
-            "author_id": author_id,
-            "author_name": author_name,
-            "author_photo": author_photo,
-            "likes": likes,
-            "retweets": retweets,
-            "replies": replies,
-            "shares": shares
-        })
+            "author_id": tweet.get("author_id", "unknown"),
+            "author_name": tweet.get("author_name", "Unknown"),
+            "author_photo": tweet.get("author_photo", ""),
+        }
+
+        # Extract engagement metrics safely
+        public_metrics = tweet.get("public_metrics", {})
+        processed_tweet["likes"] = public_metrics.get("like_count", 0)
+        processed_tweet["retweets"] = public_metrics.get("retweet_count", 0)
+        processed_tweet["replies"] = public_metrics.get("reply_count", 0)
+        processed_tweet["shares"] = public_metrics.get("quote_count", 0)
+
+        processed_tweets.append(processed_tweet)
 
     return processed_tweets

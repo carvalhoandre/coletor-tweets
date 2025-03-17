@@ -36,10 +36,16 @@ def analytic_tweets(raw_tweets: list):
         if 'sentiment' not in df.columns:
             raise ValueError("Processed tweets do not have the 'sentiment' column'")
 
-        df['likes'] = df.get('likes', 0)
-        df['retweets'] = df.get('retweets', 0)
-        df['replies'] = df.get('replies', 0)
-        df['shares'] = df.get('shares', 0)
+        required_columns = ['sentiment', 'likes', 'retweets', 'replies']
+        for col in required_columns:
+            if col not in df.columns:
+                handle_logger(message=f"⚠️ Missing column: {col}. Filling with zeros.", type_logger="warning")
+                df[col] = 0
+
+        df['likes'] = df['likes'].fillna(0).astype(int)
+        df['retweets'] = df['retweets'].fillna(0).astype(int)
+        df['replies'] = df['replies'].fillna(0).astype(int)
+        df['sentiment'] = df['sentiment'].fillna(0).astype(float)
 
         # Group by hour and compute metrics
         hourly_stats = df.groupby('hour').agg(
@@ -47,9 +53,10 @@ def analytic_tweets(raw_tweets: list):
             tweet_count=('text', 'count'),
             likes_mean=('likes', 'mean'),
             retweets_mean=('retweets', 'mean'),
-            replies_mean=('replies', 'mean'),
-            shares_mean=('shares', 'mean')
+            replies_mean=('replies', 'mean')
         ).reset_index()
+
+        handle_logger(message="✅ Hourly metrics computed successfully.", type_logger="info")
 
         return hourly_stats
     except Exception as e:

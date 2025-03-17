@@ -47,13 +47,13 @@ class TweetService:
             self._twitter_client = g.twitter_client
         return self._twitter_client
 
-    def get_tweets(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    def get_tweets(self, force_refresh: bool = False, search: str = '') -> List[Dict[str, Any]]:
         """Retrieve tweets, with caching and optional refresh."""
         try:
             if not force_refresh and self._has_cached_tweets():
                 return self._get_cached_tweets()
 
-            raw_tweets = self._fetch_from_twitter()
+            raw_tweets = self._fetch_from_twitter(search)
             if not raw_tweets:
                 raise ValueError("No tweets received from Twitter API")
 
@@ -108,13 +108,13 @@ class TweetService:
             handle_logger(message=f"Cache retrieval failed: {str(e)}", type_logger="error")
             return []
 
-    def _fetch_from_twitter(self, max_retries: int = 3) -> List[Dict[str, Any]]:
+    def _fetch_from_twitter(self, max_retries: int = 10, search: str = '') -> List[Dict[str, Any]]:
         """Fetch tweets from Twitter API with user details."""
         retries = 0
         while retries < max_retries:
             try:
                 response = self.twitter_client.search_recent_tweets(
-                    query="neymar -is:retweet",
+                    query= search + "-is:retweet",
                     max_results=10,
                     tweet_fields=["text", "author_id", "created_at", "public_metrics"],
                     expansions=["author_id"],
@@ -131,6 +131,7 @@ class TweetService:
                     author_id = tweet.data["author_id"]
                     author_info = users_map.get(author_id, {})
 
+                    metrics = tweet.data.get("public_metrics", {})
                     tweets.append({
                         "tweet_id": tweet.data.get("id"),
                         "text": tweet.data.get("text"),
@@ -139,6 +140,9 @@ class TweetService:
                         "author_photo": author_info.get("profile_image_url", ""),
                         "created_at": tweet.data.get("created_at"),
                         "public_metrics": tweet.data.get("public_metrics"),
+                        "likes": metrics.get("like_count", 0),
+                        "retweets": metrics.get("retweet_count", 0),
+                        "replies": metrics.get("reply_count", 0),
                     })
                 return tweets
             except tweepy.TooManyRequests as e:
@@ -165,11 +169,15 @@ class TweetService:
             tweet_copy["stored_at"] = current_time
             tweet_copy["source"] = "twitter_api"
             tweet_copy["processed"] = False
+            tweet_copy["likes"] = tweet.get("likes", 0)
+            tweet_copy["retweets"] = tweet.get("retweets", 0)
+            tweet_copy["replies"] = tweet.get("replies", 0)
+
             processed.append(tweet_copy)
         return processed
 
     def _store_tweets(self, tweets: List[Dict[str, Any]]) -> None:
-        """Store processed tweets in MongoDB."""
+        """Store processed tweets in MongoDB, including engagement metrics."""
         if not tweets:
             handle_logger(message="No tweets to store", type_logger="warning")
             return
@@ -187,7 +195,7 @@ class TweetService:
             handle_logger(message=f"Storage failed: {str(e)}", type_logger="error")
             raise
 
-    def process_hourly_metrics(self, force_refresh: bool = False)-> Dict[str, Any]:
+    def process_hourly_metrics(self, force_refresh: bool = False, search: str = '')-> Dict[str, Any]:
         """
         Calculate the average hourly sentiment from tweets and save the results
         in the 'tweets_metrics' collection.
@@ -203,7 +211,7 @@ class TweetService:
         }
         """
         try:
-            tweets = self.get_tweets(force_refresh=force_refresh)
+            tweets = self.get_tweets(force_refresh=force_refresh, search=search)
             if not tweets:
                 raise ValueError("No tweets available for metrics analysis")
 
@@ -216,6 +224,12 @@ class TweetService:
             # For each metric (hourly), perform an upsert into the collection to avoid duplicates
             for doc in hourly_stats_list:
                 hour = doc.get("hour")
+
+                # Ensure likes, retweets, and replies are calculated
+                doc["likes_mean"] = sum(tweet["likes"] for tweet in tweets if "likes" in tweet) / len(tweets)
+                doc["retweets_mean"] = sum(tweet["retweets"] for tweet in tweets if "retweets" in tweet) / len(tweets)
+                doc["replies_mean"] = sum(tweet["replies"] for tweet in tweets if "replies" in tweet) / len(tweets)
+
                 # Updates or inserts the document based on the "hour" field
                 self.metrics_collection.update_one(
                     {"hour": hour},
