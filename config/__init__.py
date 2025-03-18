@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from flask import Flask, g, request
 from flask_cors import CORS
 
-from config.mongo_db import get_mongo_db
 from config.x_connect import get_twitter_client, close_twitter_client
 from utils import error_handler
 from config.settings import DevConfig, ProdConfig
