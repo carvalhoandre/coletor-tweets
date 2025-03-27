@@ -41,7 +41,7 @@ def process_tweet(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         timestamp = None
         if isinstance(created_at, str):
             try:
-                timestamp = datetime.fromisoformat(created_at)
+                timestamp = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
             except ValueError:
                 timestamp = None
 
@@ -51,7 +51,7 @@ def process_tweet(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "text": text,
             "cleaned_text": cleaned_tweet,
             "sentiment": sentiment,
-            "timestamp": timestamp.isoformat() if timestamp else None,
+            "timestamp": timestamp if timestamp else datetime.utcnow(),
             "author_id": tweet.get("author_id", "unknown"),
             "author_name": tweet.get("author_name", "Unknown"),
             "author_photo": tweet.get("author_photo", ""),

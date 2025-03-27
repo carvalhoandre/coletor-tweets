@@ -31,7 +31,9 @@ def analytic_tweets(raw_tweets: list):
             return pd.DataFrame()
 
         df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
-        df['hour'] = df['timestamp'].dt.hour
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        df = df.dropna(subset=["timestamp"])
+        df['hour'] = df['timestamp'].dt.hour.astype(int)
 
         if 'sentiment' not in df.columns:
             raise ValueError("Processed tweets do not have the 'sentiment' column'")
@@ -42,11 +44,11 @@ def analytic_tweets(raw_tweets: list):
                 handle_logger(message=f"⚠️ Missing column: {col}. Filling with zeros.", type_logger="warning")
                 df[col] = 0
 
-        df['likes'] = df['likes'].fillna(0).astype(int)
-        df['retweets'] = df['retweets'].fillna(0).astype(int)
-        df['replies'] = df['replies'].fillna(0).astype(int)
-        df['sentiment'] = df['sentiment'].fillna(0).astype(float)
-
+        df['likes'] = pd.to_numeric(df['likes'], errors='coerce').fillna(0).astype(float)
+        df['retweets'] = pd.to_numeric(df['retweets'], errors='coerce').fillna(0).astype(float)
+        df['replies'] = pd.to_numeric(df['replies'], errors='coerce').fillna(0).astype(float)
+        df['sentiment'] = pd.to_numeric(df['sentiment'], errors='coerce').fillna(0).astype(float)
+        
         # Group by hour and compute metrics
         hourly_stats = df.groupby('hour').agg(
             sentiment_mean=('sentiment', 'mean'),
@@ -57,6 +59,7 @@ def analytic_tweets(raw_tweets: list):
         ).reset_index()
 
         handle_logger(message="✅ Hourly metrics computed successfully.", type_logger="info")
+        hourly_stats["hour"] = pd.to_numeric(hourly_stats["hour"], errors='coerce').fillna(0).astype(int)
 
         return hourly_stats
     except Exception as e:
@@ -73,19 +76,30 @@ def calculate_hype_score(hourly_stats):
         hype_scores = []
 
         for record in hourly_stats:
-            tweet_count = record.get("tweet_count", 0)
-            likes_mean = record.get("likes_mean", 0)
-            retweets_mean = record.get("retweets_mean", 0)
-            replies_mean = record.get("replies_mean", 0)
-            sentiment_mean = record.get("sentiment_mean", 0)
+            try:
+                hour = int(record.get("hour", 0))
+                tweet_count = float(record.get("tweet_count", 0))
+                likes_mean = float(record.get("likes_mean", 0))
+                retweets_mean = float(record.get("retweets_mean", 0))
+                replies_mean = float(record.get("replies_mean", 0))
+                sentiment_mean = float(record.get("sentiment_mean", 0))
+                
+                hype_score = (
+                    tweet_count * 0.4 +
+                    likes_mean * 0.3 +
+                    retweets_mean * 0.2 +
+                    replies_mean * 0.1 +
+                    sentiment_mean * 10
+                )
 
-            hype_score = (tweet_count * 0.4) + (likes_mean * 0.3) + (retweets_mean * 0.2) + (replies_mean * 0.1) + (
-                        sentiment_mean * 10)
 
-            hype_scores.append({
-                "hour": record.get("hour"),
-                "hype_score": round(hype_score, 2)
-            })
+                hype_scores.append({
+                    "hour": hour,
+                    "hype_score": round(hype_score, 2)
+                })
+            except Exception as inner_e:
+                from utils.logger import handle_logger
+                handle_logger(message=f"[Hype Score] Error in record {record}: {str(inner_e)}", type_logger="warning")
 
         return hype_scores
 

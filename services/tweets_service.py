@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError, DuplicateKeyError
-from flask import current_app, g
+from flask import g
 import tweepy
 
 from analytics.tweets_analytic import analytic_tweets, calculate_hype_score
@@ -53,13 +53,30 @@ class TweetService:
             if not force_refresh and self._has_cached_tweets():
                 return self._get_cached_tweets()
 
-            raw_tweets = self._fetch_from_twitter(search)
+            raw_tweets = self._fetch_from_twitter(search=search)
+            
             if not raw_tweets:
                 raise ValueError("No tweets received from Twitter API")
 
             processed_tweets = self._process_tweets(raw_tweets)
             self._store_tweets(processed_tweets)
-            return processed_tweets
+            tweets = processed_tweets
+            
+            sorted_tweets = sorted(
+                tweets,
+                key=lambda x: x.get("created_at", datetime.min),
+                reverse=True
+            )
+            
+            for tweet in sorted_tweets:
+                if '_id' in tweet:
+                    tweet['_id'] = str(tweet['_id'])
+                if 'created_at' in tweet and isinstance(tweet['created_at'], datetime):
+                    tweet['created_at'] = tweet['created_at'].isoformat()
+                if 'stored_at' in tweet and isinstance(tweet['stored_at'], datetime):
+                    tweet['stored_at'] = tweet['stored_at'].isoformat()
+
+            return sorted_tweets
 
         except (PyMongoError, tweepy.TweepyException) as e:
             handle_logger(message=f"Tweet service failed: {str(e)}", type_logger="error")
@@ -108,52 +125,78 @@ class TweetService:
             handle_logger(message=f"Cache retrieval failed: {str(e)}", type_logger="error")
             return []
 
-    def _fetch_from_twitter(self, max_retries: int = 10, search: str = '') -> List[Dict[str, Any]]:
-        """Fetch tweets from Twitter API with user details."""
-        retries = 0
-        while retries < max_retries:
+    def _fetch_from_twitter(self, search: str = '', max_retries: int = 1) -> List[Dict[str, Any]]:
+        """ 
+        Fetch tweets from Twitter API, acumulando resultados até `max_retries * 10` tweets (10 tweets por requisição).
+        """
+        tweets = []
+        next_token = None
+        attempts = 0
+        
+        while attempts < max_retries:
             try:
                 response = self.twitter_client.search_recent_tweets(
-                    query= search + "-is:retweet",
+                    query=f"{search} -is:retweet",
                     max_results=10,
                     tweet_fields=["text", "author_id", "created_at", "public_metrics"],
                     expansions=["author_id"],
-                    user_fields=["name", "profile_image_url"]
+                    user_fields=["name", "profile_image_url"],
+                    next_token=next_token
                 )
 
                 if not response.data:
-                    return []
+                    break
 
-                users_map = {user.id: user.data for user in response.includes.get("users", [])}
-                tweets = []
+                users_map = {str(user.id): user for user in response.includes.get("users", [])}
 
                 for tweet in response.data:
-                    author_id = tweet.data["author_id"]
-                    author_info = users_map.get(author_id, {})
+                    author_info = users_map.get(str(tweet.author_id))
+                    metrics = tweet.public_metrics
 
-                    metrics = tweet.data.get("public_metrics", {})
                     tweets.append({
-                        "tweet_id": tweet.data.get("id"),
-                        "text": tweet.data.get("text"),
-                        "author_id": author_id,
-                        "author_name": author_info.get("name", "Unknown"),
-                        "author_photo": author_info.get("profile_image_url", ""),
-                        "created_at": tweet.data.get("created_at"),
-                        "public_metrics": tweet.data.get("public_metrics"),
-                        "likes": metrics.get("like_count", 0),
-                        "retweets": metrics.get("retweet_count", 0),
-                        "replies": metrics.get("reply_count", 0),
+                        "tweet_id": tweet.id,
+                        "text": tweet.text,
+                        "author_id": tweet.author_id,
+                        "author_name": author_info.name if author_info else "Unknown",
+                        "author_photo": author_info.profile_image_url if author_info else "",
+                        "created_at": tweet.created_at.isoformat() if tweet.created_at else datetime.utcnow().isoformat(),
+                        "public_metrics": {
+                            "like_count": int(metrics.get("like_count", 0)),
+                            "retweet_count": int(metrics.get("retweet_count", 0)),
+                            "reply_count": int(metrics.get("reply_count", 0)),
+                            "quote_count": int(metrics.get("quote_count", 0)),
+                            "bookmark_count": int(metrics.get("bookmark_count", 0)),
+                            "impression_count": int(metrics.get("impression_count", 0))
+                        },
+                        "likes": int(metrics.get("like_count", 0)),
+                        "retweets": int(metrics.get("retweet_count", 0)),
+                        "replies": int(metrics.get("reply_count", 0))
                     })
-                return tweets
+
+                next_token = response.meta.get("next_token")
+
+                if not next_token:
+                    break
+
+                attempts += 1
+                sleep(1)
+
             except tweepy.TooManyRequests as e:
                 retry_after = int(e.response.headers.get('Retry-After', 60))
-                handle_logger(message=f"Rate limited. Retrying in {retry_after}s (attempt {retries + 1}/{max_retries})", type_logger="warning")
+                handle_logger(
+                    message=f"Rate limited. Retrying in {retry_after}s (attempt {attempts + 1}/{max_retries})",
+                    type_logger="warning"
+                )
                 sleep(retry_after)
-                retries += 1
+                attempts += 1
             except tweepy.TweepyException as e:
                 handle_logger(message=f"Twitter API error: {str(e)}", type_logger="error")
                 raise
-        raise RuntimeError("Exceeded maximum retries due to rate limiting")
+            except Exception as e:
+                handle_logger(message=f"Unexpected error fetching tweets: {str(e)}", type_logger="error")
+                raise
+
+        return tweets
 
     @staticmethod
     def _process_tweets(raw_tweets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -172,6 +215,15 @@ class TweetService:
             tweet_copy["likes"] = tweet.get("likes", 0)
             tweet_copy["retweets"] = tweet.get("retweets", 0)
             tweet_copy["replies"] = tweet.get("replies", 0)
+            tweet_copy["likes"] = int(tweet_copy.get("likes", 0))
+            tweet_copy["retweets"] = int(tweet_copy.get("retweets", 0))
+            tweet_copy["replies"] = int(tweet_copy.get("replies", 0))\
+            
+            if isinstance(tweet_copy.get("created_at"), str):
+                try:
+                    tweet_copy["created_at"] = datetime.fromisoformat(tweet_copy["created_at"].replace("Z", "+00:00"))
+                except ValueError:
+                    tweet_copy["created_at"] = datetime.utcnow()
 
             processed.append(tweet_copy)
         return processed
@@ -232,7 +284,7 @@ class TweetService:
 
             # Process hourly stats with engagement and hype scores
             for record in hourly_stats_list:
-                hour = record.get("hour")
+                hour = int(record.get("hour"))
 
                 # Add engagement metrics
                 record["likes_mean"] = likes_mean
@@ -240,7 +292,7 @@ class TweetService:
                 record["replies_mean"] = replies_mean
 
                 # Add hype score
-                hype = next((h for h in hype_scores if h["hour"] == hour), {"hype_score": 0})
+                hype = next((h for h in hype_scores if int(h["hour"]) == int(hour)), {"hype_score": 0})
                 record["hype_score"] = hype["hype_score"]
 
                 # Perform single database update per document
