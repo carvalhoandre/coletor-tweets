@@ -5,7 +5,7 @@ from config.settings import DevConfig, ProdConfig
 import os
 from dotenv import load_dotenv
 
-from flask import Flask, g, request, jsonify
+from flask import Flask, g, request, jsonify, current_app
 from flask_cors import CORS
 
 from config.x_connect import get_twitter_client, close_twitter_client
@@ -46,18 +46,22 @@ def create_app(env='dev'):
 
     @app.before_request
     def setup_and_check():
+        if request.method == 'OPTIONS':
+            return '', 200
+
         try:
             g.mongo_db = get_mongo_db()
             g.twitter_client = get_twitter_client()
-            
+
             VALID_API_KEY = os.getenv('API_KEY')
             api_key = request.headers.get('X-API-Key')
-
+            
             if api_key != VALID_API_KEY:
                 return jsonify({"error": "Unauthorized"}), 401
         except Exception as e:
-            app.logger.error(f"Service initialization or API Key check failed: {str(e)}")
+            current_app.logger.error(f"Service init or auth error: {str(e)}")
             raise
+
 
     @app.teardown_appcontext
     def cleanup_services(exception=None):
