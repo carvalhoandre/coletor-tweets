@@ -45,22 +45,19 @@ def create_app(env='dev'):
         return response
 
     @app.before_request
-    def setup_services():
+    def setup_and_check():
         try:
             g.mongo_db = get_mongo_db()
             g.twitter_client = get_twitter_client()
-        except Exception as e:
-            app.logger.error(f"Service initialization failed: {str(e)}")
-            raise
-        
-    @app.before_request
-    def check_api_key():
-        VALID_API_KEY = os.getenv('API_KEY')
-        api_key = request.headers.get('X-API-Key')
+            
+            VALID_API_KEY = os.getenv('API_KEY')
+            api_key = request.headers.get('X-API-Key')
 
-        if api_key != VALID_API_KEY:
-            app.logger.warning(f"Unauthorized access attempt with API Key: {api_key}")
-            return jsonify({"error": "Unauthorized"}), 401
+            if api_key != VALID_API_KEY:
+                return jsonify({"error": "Unauthorized"}), 401
+        except Exception as e:
+            app.logger.error(f"Service initialization or API Key check failed: {str(e)}")
+            raise
 
     @app.teardown_appcontext
     def cleanup_services(exception=None):
